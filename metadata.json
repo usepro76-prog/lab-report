@@ -1,0 +1,6 @@
+{
+  "name": "Laboratory Report Management System",
+  "description": "A modern diagnostic laboratory report management system to manage patients, test parameters, and results, generating professional, printable PDF reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
