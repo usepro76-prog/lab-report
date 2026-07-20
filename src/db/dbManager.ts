@@ -262,16 +262,30 @@ export const dbManager = {
   // 2. LABORATORY SETTINGS
   async getLaboratorySettings(): Promise<LaboratorySettings> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('laboratory').select('*').single();
-      if (!error && data) return data as LaboratorySettings;
+      try {
+        const { data, error } = await supabase.from('laboratory').select('*');
+        if (!error && data && data.length > 0) {
+          return data[0] as LaboratorySettings;
+        }
+        if (!error && data && data.length === 0) {
+          await supabase.from('laboratory').insert(INITIAL_LABORATORY_SETTINGS);
+          return INITIAL_LABORATORY_SETTINGS;
+        }
+      } catch (err) {
+        console.error('Failed to get laboratory settings from Supabase', err);
+      }
     }
     return getLocalStorage('lab_settings', INITIAL_LABORATORY_SETTINGS);
   },
 
   async updateLaboratorySettings(settings: LaboratorySettings): Promise<LaboratorySettings> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('laboratory').upsert(settings).select().single();
-      if (!error && data) return data as LaboratorySettings;
+      try {
+        const { data, error } = await supabase.from('laboratory').upsert(settings).select().single();
+        if (!error && data) return data as LaboratorySettings;
+      } catch (err) {
+        console.error('Failed to update laboratory settings', err);
+      }
     }
     setLocalStorage('lab_settings', settings);
     return settings;
@@ -280,19 +294,44 @@ export const dbManager = {
   // 3. TESTS & TEST PARAMETERS
   async getTests(): Promise<Test[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('tests').select('*').order('category');
-      if (!error && data) return data as Test[];
+      try {
+        const { data, error } = await supabase.from('tests').select('*').order('category');
+        if (!error && data && data.length > 0) {
+          return data as Test[];
+        }
+        if (!error && data && data.length === 0) {
+          console.log('Seeding initial diagnostic tests and parameters to Supabase...');
+          const { error: seedTestErr } = await supabase.from('tests').insert(INITIAL_TESTS);
+          if (!seedTestErr) {
+            await supabase.from('test_parameters').insert(INITIAL_PARAMETERS);
+            // Also seed laboratory if empty
+            const { data: labData } = await supabase.from('laboratory').select('*');
+            if (labData && labData.length === 0) {
+              await supabase.from('laboratory').insert(INITIAL_LABORATORY_SETTINGS);
+            }
+            return INITIAL_TESTS;
+          } else {
+            console.error('Failed to seed tests:', seedTestErr);
+          }
+        }
+      } catch (err) {
+        console.error('Error during getTests query:', err);
+      }
     }
     return getLocalStorage('lab_tests', INITIAL_TESTS);
   },
 
   async getParametersByTestId(testId: string): Promise<TestParameter[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('test_parameters')
-        .select('*')
-        .eq('test_id', testId)
-        .order('display_order');
-      if (!error && data) return data as TestParameter[];
+      try {
+        const { data, error } = await supabase.from('test_parameters')
+          .select('*')
+          .eq('test_id', testId)
+          .order('display_order');
+        if (!error && data && data.length > 0) return data as TestParameter[];
+      } catch (err) {
+        console.error('Error getting parameters by test_id', err);
+      }
     }
     const allParams = getLocalStorage('lab_parameters', INITIAL_PARAMETERS);
     return allParams
@@ -302,11 +341,15 @@ export const dbManager = {
 
   async getParametersByTestIds(testIds: string[]): Promise<TestParameter[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('test_parameters')
-        .select('*')
-        .in('test_id', testIds)
-        .order('display_order');
-      if (!error && data) return data as TestParameter[];
+      try {
+        const { data, error } = await supabase.from('test_parameters')
+          .select('*')
+          .in('test_id', testIds)
+          .order('display_order');
+        if (!error && data && data.length > 0) return data as TestParameter[];
+      } catch (err) {
+        console.error('Error getting parameters by test_ids', err);
+      }
     }
     const allParams = getLocalStorage('lab_parameters', INITIAL_PARAMETERS);
     return allParams
@@ -320,11 +363,20 @@ export const dbManager = {
     let count = 0;
 
     if (isSupabaseConfigured && supabase) {
-      const { count: dbCount, error } = await supabase
-        .from('reports')
-        .select('*', { count: 'exact', head: true });
-      if (!error && dbCount !== null) {
-        count = dbCount;
+      try {
+        const { count: dbCount, error } = await supabase
+          .from('reports')
+          .select('*', { count: 'exact', head: true });
+        if (!error && dbCount !== null) {
+          count = dbCount;
+        } else {
+          const reports = getLocalStorage('lab_reports', INITIAL_REPORTS);
+          count = reports.length;
+        }
+      } catch (err) {
+        console.error('Error counting reports from Supabase', err);
+        const reports = getLocalStorage('lab_reports', INITIAL_REPORTS);
+        count = reports.length;
       }
     } else {
       const reports = getLocalStorage('lab_reports', INITIAL_REPORTS);

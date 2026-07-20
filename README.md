@@ -87,5 +87,67 @@ CREATE TABLE IF NOT EXISTS laboratory (
 );
 ```
 
-### 3. Restart Application Workspace
+### 3. Configure Row-Level Security (RLS) Policies
+By default, new tables in Supabase have Row-Level Security (RLS) enabled, which blocks anonymous client-side reads and writes. To fix the `new row violates row-level security policy` error, run **one** of the two solutions below in your **Supabase SQL Editor**:
+
+#### Option A: Allow public read/write access (Recommended for sandbox testing)
+Execute this SQL block to configure permissive RLS policies for each table so your client-side LIMS client can save patient data, test panels, results, and settings:
+
+```sql
+-- Enable public policies for patients
+ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON patients FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON patients FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON patients FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON patients FOR DELETE USING (true);
+
+-- Enable public policies for reports
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON reports FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON reports FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON reports FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON reports FOR DELETE USING (true);
+
+-- Enable public policies for tests
+ALTER TABLE tests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON tests FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON tests FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON tests FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON tests FOR DELETE USING (true);
+
+-- Enable public policies for test_parameters
+ALTER TABLE test_parameters ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON test_parameters FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON test_parameters FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON test_parameters FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON test_parameters FOR DELETE USING (true);
+
+-- Enable public policies for report_results
+ALTER TABLE report_results ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON report_results FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON report_results FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON report_results FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON report_results FOR DELETE USING (true);
+
+-- Enable public policies for laboratory
+ALTER TABLE laboratory ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select" ON laboratory FOR SELECT USING (true);
+CREATE POLICY "Allow public insert" ON laboratory FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update" ON laboratory FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete" ON laboratory FOR DELETE USING (true);
+```
+
+#### Option B: Disable RLS completely (Simplest for local development)
+Alternatively, you can turn off Row-Level Security entirely for these 6 tables to allow full, unrestricted client access:
+
+```sql
+ALTER TABLE patients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE reports DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tests DISABLE ROW LEVEL SECURITY;
+ALTER TABLE test_parameters DISABLE ROW LEVEL SECURITY;
+ALTER TABLE report_results DISABLE ROW LEVEL SECURITY;
+ALTER TABLE laboratory DISABLE ROW LEVEL SECURITY;
+```
+
+### 4. Restart Application Workspace
 After specifying the credentials, reboot/restart the development workspace to link with your active remote database automatically. If no credentials are found, the app automatically fails over safely to a sandbox offline local memory database so you can continue testing with zero friction.
