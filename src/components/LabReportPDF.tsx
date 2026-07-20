@@ -161,11 +161,10 @@ export default function LabReportPDF({ report, patient, results, settings }: Lab
                 <table className="w-full text-left text-[11px] border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 text-gray-400 font-bold uppercase text-[8px] tracking-wider">
-                      <th className="py-2 w-5/12">Investigation / Parameter</th>
+                      <th className="py-2 w-6/12">Investigation / Parameter</th>
                       <th className="py-2 text-center w-2/12">Observed Value</th>
                       <th className="py-2 text-center w-2/12">Unit</th>
-                      <th className="py-2 text-center w-3/12">Reference Interval</th>
-                      <th className="py-2 text-right w-2/12">Interpretive Flag</th>
+                      <th className="py-2 text-center w-2/12">Reference Interval</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -192,11 +191,6 @@ export default function LabReportPDF({ report, patient, results, settings }: Lab
                           </td>
                           <td className="py-2 text-center text-gray-500 font-mono font-medium">
                             {getPatientSpecificReference(res) || '—'}
-                          </td>
-                          <td className="py-2 text-right">
-                            {res.result ? getFlagBadge(computedFlag) : (
-                              <span className="text-[9px] text-gray-300 font-semibold uppercase font-mono italic">Pending</span>
-                            )}
                           </td>
                         </tr>
                       );
