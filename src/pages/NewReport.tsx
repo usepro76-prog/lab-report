@@ -261,12 +261,137 @@ export default function NewReport() {
     );
   };
 
-  const handleResultChange = (paramId: string, val: string) => {
+  const isNumericRange = (p: TestParameter) => {
+    const ref = p.reference_male || p.reference_female || p.reference_child || '';
+    if (ref.toLowerCase() === 'negative') return false;
+    return /[\d]/.test(ref);
+  };
+
+  const isCalculatedParameter = (p: TestParameter) => {
+    const name = p.parameter_name.toLowerCase();
+    return name.includes('(calculated)') || p.id === 'p-lip-ldl' || p.id === 'p-cbc-mcv' || p.id === 'p-cbc-mch' || p.id === 'p-cbc-mchc' || p.id === 'p-lft-glob' || p.id === 'p-lft-agratio';
+  };
+
+  const handleResultChange = (paramId: string, val: string, p: TestParameter) => {
+    let cleanVal = val;
+    if (isNumericRange(p)) {
+      // Allow numbers and a single decimal point
+      cleanVal = val.replace(/[^0-9.]/g, '');
+      const parts = cleanVal.split('.');
+      if (parts.length > 2) {
+        cleanVal = parts[0] + '.' + parts.slice(1).join('');
+      }
+    }
     setResultValues(prev => ({
       ...prev,
-      [paramId]: val
+      [paramId]: cleanVal
     }));
   };
+
+  // REACTIVE AUTOMATED CALCULATIONS ENGINE (Formulas)
+  useEffect(() => {
+    let changed = false;
+    const updated = { ...resultValues };
+
+    // 1. LDL Cholesterol (Calculated): LDL = TC - HDL - (TG / 5)
+    const tcParam = testParameters.find(p => p.id === 'p-lip-chol' || p.parameter_name.toLowerCase() === 'total cholesterol');
+    const hdlParam = testParameters.find(p => p.id === 'p-lip-hdl' || p.parameter_name.toLowerCase() === 'hdl cholesterol');
+    const tgParam = testParameters.find(p => p.id === 'p-lip-trig' || p.parameter_name.toLowerCase() === 'triglycerides');
+    const ldlParam = testParameters.find(p => p.id === 'p-lip-ldl' || p.parameter_name.toLowerCase().includes('ldl cholesterol'));
+
+    if (tcParam && hdlParam && tgParam && ldlParam) {
+      const tc = parseFloat(resultValues[tcParam.id]);
+      const hdl = parseFloat(resultValues[hdlParam.id]);
+      const tg = parseFloat(resultValues[tgParam.id]);
+      if (!isNaN(tc) && !isNaN(hdl) && !isNaN(tg) && tg > 0) {
+        const ldlVal = (tc - hdl - (tg / 5)).toFixed(1);
+        if (resultValues[ldlParam.id] !== ldlVal) {
+          updated[ldlParam.id] = ldlVal;
+          changed = true;
+        }
+      }
+    }
+
+    // 2. CBC Indices (MCV, MCH, MCHC)
+    const hbParam = testParameters.find(p => p.id === 'p-cbc-hb' || p.parameter_name.toLowerCase() === 'hemoglobin');
+    const rbcParam = testParameters.find(p => p.id === 'p-cbc-rbc' || p.parameter_name.toLowerCase().includes('rbc'));
+    const pcvParam = testParameters.find(p => p.id === 'p-cbc-pcv' || p.parameter_name.toLowerCase().includes('pcv'));
+    const mcvParam = testParameters.find(p => p.id === 'p-cbc-mcv' || p.parameter_name.toLowerCase() === 'mcv');
+    const mchParam = testParameters.find(p => p.id === 'p-cbc-mch' || p.parameter_name.toLowerCase() === 'mch');
+    const mchcParam = testParameters.find(p => p.id === 'p-cbc-mchc' || p.parameter_name.toLowerCase() === 'mchc');
+
+    // MCV = (PCV * 10) / RBC
+    if (pcvParam && rbcParam && mcvParam) {
+      const pcv = parseFloat(resultValues[pcvParam.id]);
+      const rbc = parseFloat(resultValues[rbcParam.id]);
+      if (!isNaN(pcv) && !isNaN(rbc) && rbc > 0) {
+        const mcvVal = ((pcv * 10) / rbc).toFixed(1);
+        if (resultValues[mcvParam.id] !== mcvVal) {
+          updated[mcvParam.id] = mcvVal;
+          changed = true;
+        }
+      }
+    }
+
+    // MCH = (Hb * 10) / RBC
+    if (hbParam && rbcParam && mchParam) {
+      const hb = parseFloat(resultValues[hbParam.id]);
+      const rbc = parseFloat(resultValues[rbcParam.id]);
+      if (!isNaN(hb) && !isNaN(rbc) && rbc > 0) {
+        const mchVal = ((hb * 10) / rbc).toFixed(1);
+        if (resultValues[mchParam.id] !== mchVal) {
+          updated[mchParam.id] = mchVal;
+          changed = true;
+        }
+      }
+    }
+
+    // MCHC = (Hb * 100) / PCV
+    if (hbParam && pcvParam && mchcParam) {
+      const hb = parseFloat(resultValues[hbParam.id]);
+      const pcv = parseFloat(resultValues[pcvParam.id]);
+      if (!isNaN(hb) && !isNaN(pcv) && pcv > 0) {
+        const mchcVal = ((hb * 100) / pcv).toFixed(1);
+        if (resultValues[mchcParam.id] !== mchcVal) {
+          updated[mchcParam.id] = mchcVal;
+          changed = true;
+        }
+      }
+    }
+
+    // 3. LFT: Globulin & A/G Ratio
+    const tpParam = testParameters.find(p => p.id === 'p-lft-prot' || p.parameter_name.toLowerCase().includes('total protein'));
+    const albParam = testParameters.find(p => p.id === 'p-lft-alb' || p.parameter_name.toLowerCase() === 'albumin');
+    const globParam = testParameters.find(p => p.id === 'p-lft-glob' || p.parameter_name.toLowerCase().includes('globulin'));
+    const agParam = testParameters.find(p => p.id === 'p-lft-agratio' || p.parameter_name.toLowerCase().includes('a/g ratio'));
+
+    if (tpParam && albParam && globParam) {
+      const tp = parseFloat(resultValues[tpParam.id]);
+      const alb = parseFloat(resultValues[albParam.id]);
+      if (!isNaN(tp) && !isNaN(alb)) {
+        const globVal = (tp - alb).toFixed(1);
+        if (resultValues[globParam.id] !== globVal) {
+          updated[globParam.id] = globVal;
+          changed = true;
+        }
+
+        if (agParam) {
+          const globNum = tp - alb;
+          if (globNum > 0) {
+            const agVal = (alb / globNum).toFixed(2);
+            if (resultValues[agParam.id] !== agVal) {
+              updated[agParam.id] = agVal;
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      setResultValues(updated);
+    }
+  }, [resultValues, testParameters]);
 
   // STEP 4: Persist the Report
   const handleSaveReport = async (status: 'Draft' | 'Final') => {
@@ -653,7 +778,7 @@ export default function NewReport() {
               </div>
               <div>
                 <h3 className="font-bold text-gray-900 text-sm">Biochemical Result Parameters</h3>
-                <p className="text-[11px] text-gray-400">Fill in observed values. The platform evaluates and flags reference ranges instantly.</p>
+                <p className="text-[11px] text-gray-400">Fill in observed values. The platform evaluates and flags reference ranges instantly on reports.</p>
               </div>
             </div>
             
@@ -663,83 +788,102 @@ export default function NewReport() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-gray-600 border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 text-gray-400 font-bold uppercase text-[9px] tracking-wider pb-3">
-                  <th className="py-2.5">Diagnostic Profile & Parameter</th>
-                  <th className="py-2.5 text-center hidden sm:table-cell">Reference Range</th>
-                  <th className="py-2.5 text-center hidden sm:table-cell">Unit</th>
-                  <th className="py-2.5 text-center w-28 sm:w-40">Observed Result</th>
-                  <th className="py-2.5 text-right w-24 sm:w-28">Status Flag</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {testParameters.map(p => {
-                  const val = resultValues[p.id] || '';
-                  const flag = calculateFlag(val, patientGender, Number(patientAge), p);
+          <div className="space-y-8">
+            {availableTests.filter(t => selectedTestIds.includes(t.id)).map(test => {
+              const testParams = testParameters.filter(p => p.test_id === test.id);
+              if (testParams.length === 0) return null;
 
-                  // Get patient reference string
-                  let rangeStr = p.reference_male;
-                  if (Number(patientAge) < 12) {
-                    rangeStr = p.reference_child;
-                  } else if (patientGender === 'Female') {
-                    rangeStr = p.reference_female;
-                  }
+              return (
+                <div key={test.id} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                  {/* Panel Title banner */}
+                  <div className="bg-slate-50/70 border-b border-slate-100 px-5 py-3 flex items-center justify-between">
+                    <div>
+                      <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[8px] font-extrabold uppercase tracking-wider">
+                        {test.category}
+                      </span>
+                      <h4 className="font-extrabold text-gray-800 text-xs mt-1">
+                        {test.test_name}
+                      </h4>
+                    </div>
+                    <span className="text-[9px] text-gray-400 font-mono font-bold">
+                      {testParams.length} Mapped Parameters
+                    </span>
+                  </div>
 
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3">
-                        <span className="text-[9px] font-extrabold text-blue-500 uppercase tracking-wide block mb-0.5">
-                          {availableTests.find(t => t.id === p.test_id)?.test_name}
-                        </span>
-                        <span className="font-bold text-gray-800 text-xs">
-                          {p.parameter_name}
-                        </span>
-                        <div className="sm:hidden text-[10px] text-gray-400 mt-1 font-semibold">
-                          Ref: {rangeStr || '—'} • Unit: {p.unit || '—'}
-                        </div>
-                      </td>
-                      <td className="py-3 text-center hidden sm:table-cell text-gray-400 font-mono font-semibold">
-                        {rangeStr || '—'}
-                      </td>
-                      <td className="py-3 text-center hidden sm:table-cell text-gray-400 font-medium">
-                        {p.unit || '—'}
-                      </td>
-                      <td className="py-3 text-center">
-                        <input
-                          type="text"
-                          required
-                          value={val}
-                          onChange={(e) => handleResultChange(p.id, e.target.value)}
-                          placeholder="Result"
-                          className="w-full bg-slate-50 border border-gray-200 rounded-lg py-1.5 px-2 text-center font-mono font-bold text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 text-xs"
-                        />
-                      </td>
-                      <td className="py-3 text-right">
-                        {val ? (
-                          flag === 'High' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 bg-rose-50 border border-rose-100 text-rose-700 rounded font-bold text-[10px] uppercase font-mono tracking-wider animate-pulse">
-                              ▲ High
-                            </span>
-                          ) : flag === 'Low' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 bg-sky-50 border border-sky-100 text-sky-700 rounded font-bold text-[10px] uppercase font-mono tracking-wider animate-pulse">
-                              ▼ Low
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded font-bold text-[10px] uppercase font-mono tracking-wider">
-                              Normal
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wider italic">Required</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  {/* Parameters Table for this Panel */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-gray-600 border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 font-bold uppercase text-[9px] tracking-wider bg-slate-50/10">
+                          <th className="py-2.5 px-5">Biochemical Parameter</th>
+                          <th className="py-2.5 text-center hidden sm:table-cell">Reference Range</th>
+                          <th className="py-2.5 text-center hidden sm:table-cell">Unit</th>
+                          <th className="py-2.5 text-center w-48 px-5">Observed Result</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {testParams.map(p => {
+                          const val = resultValues[p.id] || '';
+                          const isCalculated = isCalculatedParameter(p);
+
+                          // Get patient reference string
+                          let rangeStr = p.reference_male;
+                          if (Number(patientAge) < 12) {
+                            rangeStr = p.reference_child;
+                          } else if (patientGender === 'Female') {
+                            rangeStr = p.reference_female;
+                          }
+
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-50/30 transition-colors">
+                              <td className="py-3 px-5">
+                                <span className="font-bold text-gray-800 text-xs">
+                                  {p.parameter_name}
+                                </span>
+                                <div className="sm:hidden text-[10px] text-gray-400 mt-1 font-semibold">
+                                  Ref: {rangeStr || '—'} • Unit: {p.unit || '—'}
+                                </div>
+                              </td>
+                              <td className="py-3 text-center hidden sm:table-cell text-gray-400 font-mono font-semibold">
+                                {rangeStr || '—'}
+                              </td>
+                              <td className="py-3 text-center hidden sm:table-cell text-gray-400 font-medium">
+                                {p.unit || '—'}
+                              </td>
+                              <td className="py-3 px-5 text-center">
+                                {isCalculated ? (
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      disabled
+                                      value={val}
+                                      placeholder="Auto-calculated"
+                                      className="w-full bg-blue-50/30 border border-blue-100/50 text-blue-700 font-mono font-bold rounded-lg py-1.5 px-3 text-center text-xs cursor-not-allowed"
+                                    />
+                                    <span className="absolute right-2 top-2.5 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[8px] font-bold uppercase tracking-wider scale-90">
+                                      Formula
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    required
+                                    value={val}
+                                    onChange={(e) => handleResultChange(p.id, e.target.value, p)}
+                                    placeholder={isNumericRange(p) ? "Number" : "Result"}
+                                    className="w-full bg-slate-50 border border-gray-200 rounded-lg py-1.5 px-3 text-center font-mono font-bold text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 text-xs"
+                                  />
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Footer Controls */}

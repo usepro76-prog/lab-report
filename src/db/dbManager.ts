@@ -61,6 +61,8 @@ const INITIAL_PARAMETERS: TestParameter[] = [
   { id: 'p-lft-alk', test_id: 't-lft', parameter_name: 'Alkaline Phosphatase (ALP)', unit: 'U/L', reference_male: '44 - 147', reference_female: '44 - 147', reference_child: '100 - 350', display_order: 5 },
   { id: 'p-lft-prot', test_id: 't-lft', parameter_name: 'Total Protein', unit: 'g/dL', reference_male: '6.0 - 8.3', reference_female: '6.0 - 8.3', reference_child: '6.0 - 8.0', display_order: 6 },
   { id: 'p-lft-alb', test_id: 't-lft', parameter_name: 'Albumin', unit: 'g/dL', reference_male: '3.5 - 5.0', reference_female: '3.5 - 5.0', reference_child: '3.4 - 4.8', display_order: 7 },
+  { id: 'p-lft-glob', test_id: 't-lft', parameter_name: 'Globulin (Calculated)', unit: 'g/dL', reference_male: '2.0 - 3.5', reference_female: '2.0 - 3.5', reference_child: '2.0 - 3.5', display_order: 8 },
+  { id: 'p-lft-agratio', test_id: 't-lft', parameter_name: 'A/G Ratio (Calculated)', unit: '', reference_male: '1.1 - 2.2', reference_female: '1.1 - 2.2', reference_child: '1.1 - 2.2', display_order: 9 },
 
   // KFT Parameters
   { id: 'p-kft-creat', test_id: 't-kft', parameter_name: 'Serum Creatinine', unit: 'mg/dL', reference_male: '0.7 - 1.3', reference_female: '0.6 - 1.1', reference_child: '0.3 - 0.7', display_order: 1 },
@@ -355,6 +357,80 @@ export const dbManager = {
     return allParams
       .filter(p => testIds.includes(p.test_id))
       .sort((a, b) => a.display_order - b.display_order);
+  },
+
+  // CUSTOM TEST DATABASE CUSTOMIZATION MUTATIONS
+  async saveTest(test: Test): Promise<Test> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('tests').upsert(test).select().single();
+        if (!error && data) return data as Test;
+        if (error) console.error('Supabase saveTest error:', error);
+      } catch (err) {
+        console.error('Error saving test to Supabase:', err);
+      }
+    }
+    const tests = getLocalStorage<Test[]>('lab_tests', INITIAL_TESTS);
+    const index = tests.findIndex(t => t.id === test.id);
+    if (index >= 0) {
+      tests[index] = test;
+    } else {
+      tests.push(test);
+    }
+    setLocalStorage('lab_tests', tests);
+    return test;
+  },
+
+  async deleteTest(testId: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('test_parameters').delete().eq('test_id', testId);
+        const { error } = await supabase.from('tests').delete().eq('id', testId);
+        return !error;
+      } catch (err) {
+        console.error('Error deleting test from Supabase:', err);
+      }
+    }
+    const tests = getLocalStorage<Test[]>('lab_tests', INITIAL_TESTS).filter(t => t.id !== testId);
+    setLocalStorage('lab_tests', tests);
+    const params = getLocalStorage<TestParameter[]>('lab_parameters', INITIAL_PARAMETERS).filter(p => p.test_id !== testId);
+    setLocalStorage('lab_parameters', params);
+    return true;
+  },
+
+  async saveParameter(param: TestParameter): Promise<TestParameter> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('test_parameters').upsert(param).select().single();
+        if (!error && data) return data as TestParameter;
+        if (error) console.error('Supabase saveParameter error:', error);
+      } catch (err) {
+        console.error('Error saving parameter to Supabase:', err);
+      }
+    }
+    const params = getLocalStorage<TestParameter[]>('lab_parameters', INITIAL_PARAMETERS);
+    const index = params.findIndex(p => p.id === param.id);
+    if (index >= 0) {
+      params[index] = param;
+    } else {
+      params.push(param);
+    }
+    setLocalStorage('lab_parameters', params);
+    return param;
+  },
+
+  async deleteParameter(paramId: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.from('test_parameters').delete().eq('id', paramId);
+        return !error;
+      } catch (err) {
+        console.error('Error deleting parameter from Supabase:', err);
+      }
+    }
+    const params = getLocalStorage<TestParameter[]>('lab_parameters', INITIAL_PARAMETERS).filter(p => p.id !== paramId);
+    setLocalStorage('lab_parameters', params);
+    return true;
   },
 
   // 4. REPORT NUMBER GENERATION (LAB-YYYY-000001)

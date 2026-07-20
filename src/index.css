@@ -38,9 +38,6 @@
 
   /* Force print target to expand and fill screen */
   .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -48,6 +45,21 @@
     box-shadow: none !important;
     background: white !important;
     border: none !important;
+  }
+
+  .print-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin-bottom: 0 !important;
+    background: white !important;
+  }
+
+  .print-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 
   /* Page setup */

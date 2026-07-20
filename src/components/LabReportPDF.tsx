@@ -1,4 +1,5 @@
-import { Patient, Report, TestParameter, LaboratorySettings } from '../types';
+import { Patient, Report, LaboratorySettings } from '../types';
+import { calculateFlag } from '../db/dbManager';
 
 interface LabReportPDFProps {
   report: Report;
@@ -20,15 +21,17 @@ interface LabReportPDFProps {
 }
 
 export default function LabReportPDF({ report, patient, results, settings }: LabReportPDFProps) {
-  // Group results by category
-  const categoriesMap: { [key: string]: typeof results } = {};
+  // Group results by test_id
+  const testGroups: { [testId: string]: typeof results } = {};
   results.forEach(res => {
-    const groupName = `${res.category} - ${res.test_name}`;
-    if (!categoriesMap[groupName]) {
-      categoriesMap[groupName] = [];
+    if (!testGroups[res.test_id]) {
+      testGroups[res.test_id] = [];
     }
-    categoriesMap[groupName].push(res);
+    testGroups[res.test_id].push(res);
   });
+
+  const testEntries = Object.entries(testGroups);
+  const totalPages = testEntries.length;
 
   const getPatientSpecificReference = (res: typeof results[0]) => {
     if (patient.age < 12) return res.reference_child;
@@ -39,182 +42,212 @@ export default function LabReportPDF({ report, patient, results, settings }: Lab
   const getFlagBadge = (flag: 'Normal' | 'High' | 'Low') => {
     if (flag === 'High') {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-100 font-mono">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 border border-rose-100 text-rose-700 font-mono">
           HIGH ▲
         </span>
       );
     }
     if (flag === 'Low') {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-100 font-mono">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-50 border border-sky-100 text-sky-700 font-mono">
           LOW ▼
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 font-mono">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 border border-emerald-100 text-emerald-700 font-mono">
         Normal
       </span>
     );
   };
 
   return (
-    <div id={`report-print-${report.id}`} className="print-area bg-white text-gray-800 p-4 sm:p-8 md:p-12 border border-gray-100 rounded-2xl shadow-sm max-w-[800px] mx-auto">
-      {/* 1. REPORT HEADER */}
-      <div className="flex flex-col sm:flex-row items-start justify-between border-b-2 border-blue-600 pb-6 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-md shadow-blue-100">
-            {settings.lab_name.charAt(0)}
-          </div>
-          <div>
-            <h1 className="text-2xl font-black text-gray-900 leading-tight tracking-tight uppercase">
-              {settings.lab_name}
-            </h1>
-            <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">
-              Accredited Clinical Reference Laboratory
-            </p>
-            <p className="text-xs text-gray-400 font-semibold max-w-sm">
-              License #: {settings.license_number || 'N/A'}
-            </p>
-          </div>
-        </div>
+    <div id={`report-print-${report.id}`} className="print-area space-y-12 no-print-space-y">
+      {testEntries.map(([testId, testResults], index) => {
+        const testName = testResults[0]?.test_name || 'Diagnostic Panel';
+        const testCategory = testResults[0]?.category || 'Clinical Chemistry';
+        const pageNum = index + 1;
 
-        <div className="text-right mt-4 sm:mt-0 text-xs text-gray-500 font-medium space-y-0.5">
-          <p className="font-bold text-gray-800 text-[13px]">{settings.address}</p>
-          <p>Phone: {settings.phone}</p>
-          <p>Email: {settings.email}</p>
-          <p className="text-[10px] text-gray-400">Hours: Mon-Sat: 07:00 AM - 08:00 PM</p>
-        </div>
-      </div>
+        return (
+          <div 
+            key={testId} 
+            className="print-page bg-white text-gray-800 p-8 sm:p-12 border border-gray-100 rounded-2xl shadow-sm max-w-[800px] mx-auto flex flex-col justify-between min-h-[1050px]"
+            style={{ pageBreakAfter: pageNum < totalPages ? 'always' : 'avoid' }}
+          >
+            <div>
+              {/* 1. CLINICAL LETTERHEAD */}
+              <div className="flex flex-col sm:flex-row items-start justify-between border-b-2 border-blue-600 pb-5 mb-5">
+                <div className="flex items-center gap-4">
+                  <div className="h-14 w-14 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl font-black shadow-md shadow-blue-100 uppercase">
+                    {settings.lab_name.charAt(0)}
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-gray-900 leading-tight tracking-tight uppercase">
+                      {settings.lab_name}
+                    </h1>
+                    <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-0.5">
+                      Accredited Clinical Reference Laboratory
+                    </p>
+                    <p className="text-[10px] text-gray-400 font-semibold">
+                      License #: {settings.license_number || 'N/A'}
+                    </p>
+                  </div>
+                </div>
 
-      {/* 2. PATIENT BIO GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-y-4 gap-x-6 bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 text-xs">
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Patient Name</span>
-          <p className="font-bold text-gray-900 text-sm">{patient.name}</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Age / Gender</span>
-          <p className="font-bold text-gray-900">{patient.age} Yrs / {patient.gender}</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Report Number</span>
-          <p className="font-mono font-bold text-blue-600 text-[13px]">{report.report_number}</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Report Date</span>
-          <p className="font-semibold text-gray-900">{report.report_date}</p>
-        </div>
+                <div className="text-right mt-3 sm:mt-0 text-[11px] text-gray-500 font-medium space-y-0.5">
+                  <p className="font-bold text-gray-800 text-xs">{settings.address}</p>
+                  <p>Phone: {settings.phone}</p>
+                  <p>Email: {settings.email}</p>
+                </div>
+              </div>
 
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Referring Physician</span>
-          <p className="font-bold text-gray-800">{patient.doctor || 'Self Referral'}</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Mobile Contact</span>
-          <p className="font-medium text-gray-800">{patient.mobile || '—'}</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Sample Collection</span>
-          <p className="font-medium text-gray-800">{report.report_date} (Diagnostic)</p>
-        </div>
-        <div>
-          <span className="text-gray-400 block font-semibold uppercase text-[9px] tracking-wider mb-0.5">Report Status</span>
-          <p className="font-bold text-emerald-600 uppercase text-[11px] flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block"></span>
-            {report.status}
-          </p>
-        </div>
-      </div>
+              {/* 2. REPEATED PATIENT BIO INFORMATION */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-y-3.5 gap-x-5 bg-slate-50 border border-slate-100 rounded-xl p-4 mb-5 text-[11px]">
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Patient Name</span>
+                  <p className="font-bold text-gray-900 text-xs">{patient.name}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Age / Gender</span>
+                  <p className="font-bold text-gray-900">{patient.age} Yrs / {patient.gender}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Report Number</span>
+                  <p className="font-mono font-bold text-blue-600">{report.report_number}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Report Date</span>
+                  <p className="font-semibold text-gray-900">{report.report_date}</p>
+                </div>
 
-      {/* 3. TEST RESULTS TABLE */}
-      <div className="mb-6 overflow-hidden">
-        {Object.entries(categoriesMap).map(([catName, resList]) => (
-          <div key={catName} className="mb-6 last:mb-0">
-            {/* Category Header */}
-            <div className="bg-blue-50 border-l-4 border-blue-600 px-3 py-1.5 mb-2 rounded-r-lg">
-              <h3 className="font-extrabold text-blue-900 text-xs tracking-wide uppercase">
-                {catName}
-              </h3>
-            </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Referring Physician</span>
+                  <p className="font-bold text-gray-800">{patient.doctor || 'Self Referral'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Mobile Contact</span>
+                  <p className="font-medium text-gray-800">{patient.mobile || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Sample Collection</span>
+                  <p className="font-medium text-gray-800">{report.report_date} (Diagnostic)</p>
+                </div>
+                <div>
+                  <span className="text-gray-400 block font-bold uppercase text-[8px] tracking-wider mb-0.5">Report Status</span>
+                  <p className="font-bold text-emerald-600 uppercase text-[10px] flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                    {report.status}
+                  </p>
+                </div>
+              </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 text-gray-400 font-bold text-[10px] uppercase tracking-wider">
-                    <th className="py-2.5 w-1/3">Investigation / Parameter</th>
-                    <th className="py-2.5 text-center">Observed Value</th>
-                    <th className="py-2.5 text-center">Unit</th>
-                    <th className="py-2.5 text-center">Reference Interval</th>
-                    <th className="py-2.5 text-right">Interpretive Flag</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {resList.map(res => (
-                    <tr key={res.parameter_id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-2.5 font-semibold text-gray-800">
-                        {res.parameter_name}
-                      </td>
-                      <td className={`py-2.5 text-center font-mono font-bold text-sm ${
-                        res.flag === 'High' ? 'text-rose-600' : res.flag === 'Low' ? 'text-sky-600' : 'text-gray-900'
-                      }`}>
-                        {res.result}
-                      </td>
-                      <td className="py-2.5 text-center text-gray-400 font-medium">
-                        {res.unit || '—'}
-                      </td>
-                      <td className="py-2.5 text-center text-gray-500 font-mono font-medium">
-                        {getPatientSpecificReference(res) || '—'}
-                      </td>
-                      <td className="py-2.5 text-right">
-                        {getFlagBadge(res.flag)}
-                      </td>
+              {/* 3. TEST PROFILE HEADING */}
+              <div className="bg-blue-50/60 border-l-4 border-blue-600 px-4 py-2 mb-4 rounded-r-lg flex items-center justify-between">
+                <div>
+                  <span className="text-[8px] font-extrabold text-blue-500 uppercase tracking-wider block">
+                    {testCategory}
+                  </span>
+                  <h3 className="font-black text-blue-900 text-xs tracking-wide uppercase">
+                    {testName}
+                  </h3>
+                </div>
+                <span className="text-[10px] text-blue-600 font-bold uppercase font-mono">
+                  Page {pageNum} of {totalPages}
+                </span>
+              </div>
+
+              {/* 4. CLINICAL BIOCHEMICAL RESULTS TABLE */}
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-left text-[11px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-400 font-bold uppercase text-[8px] tracking-wider">
+                      <th className="py-2 w-5/12">Investigation / Parameter</th>
+                      <th className="py-2 text-center w-2/12">Observed Value</th>
+                      <th className="py-2 text-center w-2/12">Unit</th>
+                      <th className="py-2 text-center w-3/12">Reference Interval</th>
+                      <th className="py-2 text-right w-2/12">Interpretive Flag</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {testResults.map(res => {
+                      // Live evaluation of flag to prevent mismatch
+                      const computedFlag = calculateFlag(res.result, patient.gender, Number(patient.age), {
+                        reference_male: res.reference_male,
+                        reference_female: res.reference_female,
+                        reference_child: res.reference_child
+                      } as any);
+
+                      return (
+                        <tr key={res.parameter_id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-2 font-semibold text-gray-800">
+                            {res.parameter_name}
+                          </td>
+                          <td className={`py-2 text-center font-mono font-bold text-xs ${
+                            computedFlag === 'High' ? 'text-rose-600' : computedFlag === 'Low' ? 'text-sky-600' : 'text-gray-900'
+                          }`}>
+                            {res.result || '—'}
+                          </td>
+                          <td className="py-2 text-center text-gray-400 font-medium">
+                            {res.unit || '—'}
+                          </td>
+                          <td className="py-2 text-center text-gray-500 font-mono font-medium">
+                            {getPatientSpecificReference(res) || '—'}
+                          </td>
+                          <td className="py-2 text-right">
+                            {res.result ? getFlagBadge(computedFlag) : (
+                              <span className="text-[9px] text-gray-300 font-semibold uppercase font-mono italic">Pending</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Bottom items kept aligned at page bottom */}
+            <div>
+              {/* 5. CLINICAL REMARKS (Only if remarks are added for patient) */}
+              {patient.remarks && (
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-6 text-[10px]">
+                  <span className="font-bold text-gray-700 block mb-0.5">Clinical Correlation & Recommendations:</span>
+                  <p className="text-gray-600 italic leading-relaxed">{patient.remarks}</p>
+                </div>
+              )}
+
+              {/* 6. VERIFIED DUAL-SIGNATURE BLOCK */}
+              <div className="grid grid-cols-2 gap-8 pt-5 border-t border-gray-100 mt-6 text-center text-[10px]">
+                <div>
+                  <div className="h-6 flex items-end justify-center pb-0.5">
+                    <span className="font-mono text-gray-400 text-[9px] italic">Verified Digitally</span>
+                  </div>
+                  <div className="border-t border-gray-200 w-44 mx-auto pt-1.5">
+                    <p className="font-bold text-gray-800">{settings.technician_name}</p>
+                    <p className="text-[9px] text-gray-400">Chief Medical Technologist</p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="h-6 flex items-end justify-center pb-0.5">
+                    <span className="font-mono text-gray-400 text-[9px] italic">Authorized Signature</span>
+                  </div>
+                  <div className="border-t border-gray-200 w-44 mx-auto pt-1.5">
+                    <p className="font-bold text-gray-800">Dr. Helena Vance, MD</p>
+                    <p className="text-[9px] text-gray-400">Consultant Pathologist</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 7. END OF SHEET DISCLAIMER */}
+              <div className="mt-5 text-center text-[9px] text-gray-400 border-t border-gray-50 pt-2.5 font-mono">
+                <p>This report is generated securely by LabSuite Laboratory Report Management System.</p>
+                <p>Values exceeding reference parameters require physician evaluation. | END OF PAGE {pageNum}</p>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* 4. REMARKS & REASONING SECTION */}
-      {patient.remarks && (
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-8 text-xs">
-          <span className="font-bold text-gray-700 block mb-1">Remarks & Recommendations:</span>
-          <p className="text-gray-600 italic leading-relaxed">{patient.remarks}</p>
-        </div>
-      )}
-
-      {/* 5. SIGNATURE FOOTER */}
-      <div className="grid grid-cols-2 gap-8 pt-10 border-t border-gray-100 mt-12 text-center text-xs">
-        <div>
-          <div className="h-10 flex items-end justify-center pb-1">
-            <span className="font-mono text-gray-400 text-[10px] italic">Verified Digitally</span>
-          </div>
-          <div className="border-t border-gray-200 w-48 mx-auto pt-2">
-            <p className="font-bold text-gray-800">{settings.technician_name}</p>
-            <p className="text-[10px] text-gray-400">Chief Medical Technologist</p>
-          </div>
-        </div>
-
-        <div>
-          <div className="h-10 flex items-end justify-center pb-1">
-            <span className="font-mono text-gray-400 text-[10px] italic">Authorized Signature</span>
-          </div>
-          <div className="border-t border-gray-200 w-48 mx-auto pt-2">
-            <p className="font-bold text-gray-800">Dr. Helena Vance, MD</p>
-            <p className="text-[10px] text-gray-400">Consultant Pathologist</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 6. TECHNICAL FOOTER */}
-      <div className="mt-12 text-center text-[10px] text-gray-400 border-t border-gray-50 pt-4 font-mono">
-        <p>This report is generated securely by LabSuite Laboratory Report Management System.</p>
-        <p>Values exceeding reference parameters require physician evaluation. | END OF REPORT</p>
-      </div>
+        );
+      })}
     </div>
   );
 }
